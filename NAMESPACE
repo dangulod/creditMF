@@ -1,0 +1,4 @@
+useDynLib(creditMF, .registration=TRUE)
+importFrom(Rcpp, evalCpp)
+import(methods, Rcpp)
+exportPattern("^[[:alpha:]]+")
