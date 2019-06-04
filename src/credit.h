@@ -6,6 +6,9 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 
+double qnor(double p, int lower_tail, int log_p);
+double pnor(double x, double mu, double sigma, int lower_tail, int log_p);
+
 void isPD(double value);
 void isEAD(double value);
 void isLGD(double value);
@@ -14,7 +17,7 @@ void isWeight(arma::vec value);
 class Counterparty
 {
 private:
-  double pd, ead, lgd, wi, eadxlgd;
+  double pd, ead, lgd, wi, eadxlgd, npd;
   arma::vec weight;
 public:
   Counterparty() = default;
@@ -22,12 +25,13 @@ public:
   ~Counterparty() = default;
   
   double getPD();
+  double getNPD();
   double getLGD();
   double getEAD();
   arma::vec getWeights();
   double getWI();
   
-  double loss(const arma::vec & Sn, double & Si);
+  double loss(const arma::mat & Sn);
 };
 
 
@@ -39,13 +43,13 @@ public:
   Portfolio() = default;
   ~Portfolio() = default;
   
-  int getN();
+  unsigned int getN();
   void addCounterparty(Counterparty c);
-  Counterparty getCounterparty(int i);
+  Counterparty getCounterparty(unsigned int i);
   
-  double mloss(const arma::vec & Vn);
-  void ploss(arma::vec * l, const arma::mat & Sn, int seed, unsigned int id, unsigned int p);
-  arma::vec loss(arma::mat & Sn, int seed = 12345);
+  double mloss(const arma::mat Vn);
+  void ploss(arma::vec * l, const arma::mat * Sn, unsigned int id, unsigned int p);
+  arma::vec loss(arma::mat & Sn);
 };
 
 #endif

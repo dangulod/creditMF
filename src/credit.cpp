@@ -1,5 +1,8 @@
 #include "credit.h"
 
+static std::normal_distribution<double> normal(0, 1);
+static std::mt19937_64 generator(1234);
+
 void isPD(double value)
 {
   if ((value < 0) | (value > 1))
@@ -30,10 +33,10 @@ void isWeight(arma::vec value)
   {
     throw std::invalid_argument("Invalid weights");
   }
-
+  
 }
 
-Counterparty::Counterparty(double pd, double ead, double lgd, arma::vec weight): 
+Counterparty::Counterparty(double pd, double ead, double lgd, arma::vec weight):
   pd(pd), ead(ead), lgd(lgd), weight(weight)
 {
   isPD(pd);
@@ -42,6 +45,7 @@ Counterparty::Counterparty(double pd, double ead, double lgd, arma::vec weight):
   isWeight(weight);
   this->wi = sqrt(1 - arma::accu(pow(weight, 2)));
   this->eadxlgd = lgd * ead;
+  this->npd = qnor(pd, 1, 0);
 }
 
 double Counterparty::getPD()
@@ -53,7 +57,7 @@ double Counterparty::getLGD()
 {
   return this->lgd;
 }
-  
+
 double Counterparty::getEAD()
 {
   return this->ead;
@@ -69,15 +73,20 @@ double Counterparty::getWI()
   return this->wi;
 }
 
-double Counterparty::loss(const arma::vec & Sn, double & Si)
+double Counterparty::getNPD()
+{
+  return this->npd;
+}
+
+double Counterparty::loss(const arma::mat &Sn)
 {
   if (Sn.size() != this->weight.size()) throw std::invalid_argument("Incorrect dimension of Sn");
   
-  double CWI = arma::accu(Sn % this->weight) + this->wi * Si;
-  return this->pd > CWI ? 0 : this->eadxlgd;
+  double CWI = arma::accu(Sn % this->weight) + this->wi * normal(generator);
+  return this->npd < CWI ? 0 : this->eadxlgd;
 }
 
-int Portfolio::getN()
+unsigned int Portfolio::getN()
 {
   return this->counterparties.size();
 }
@@ -87,9 +96,9 @@ void Portfolio::addCounterparty(Counterparty c)
   this->counterparties.push_back(c);
 }
 
-Counterparty Portfolio::getCounterparty(int i)
+Counterparty Portfolio::getCounterparty(unsigned int i)
 {
-  if ((i < 0) | (i >= getN())) 
+  if ((i < 0) | (i >= getN()))
   {
     throw std::invalid_argument("i out of bounds");
   }
@@ -97,32 +106,29 @@ Counterparty Portfolio::getCounterparty(int i)
   return this->counterparties[i];
 }
 
-double Portfolio::mloss(const arma::vec & Vn)
+double Portfolio::mloss(const arma::mat Vn)
 {
   double loss(0), d;
   for (auto &&i: this->counterparties)
   {
-    d = arma::randn();
-    loss += i.loss(Vn, d);
+    loss += i.loss(Vn);
   }
   return loss;
 }
 
-void Portfolio::ploss(arma::vec * l, const arma::mat & Sn, int seed, unsigned int id, unsigned int p)
+void Portfolio::ploss(arma::vec * l, const arma::mat * Sn, unsigned int id, unsigned int p)
 {
-  while (id < Sn.n_rows)
+  while (id < Sn->n_rows)
   {
-    arma::arma_rng::set_seed(seed);
-    Sn.row(id).print();
-    l->row(id) = mloss(Sn.row(id));
+    (*l)[id] = mloss(Sn->row(id).t());
     id += p;
   }
 }
 
-arma::vec Portfolio::loss(arma::mat & Sn, int seed)
+arma::vec Portfolio::loss(arma::mat & Sn)
 {
-  // unsigned int p = std::thread::hardware_concurrency();
-  unsigned int p = 1;
+  unsigned int p = std::thread::hardware_concurrency();
+  // unsigned int p = 1;
   
   arma::vec l(Sn.n_rows);
   
@@ -130,7 +136,7 @@ arma::vec Portfolio::loss(arma::mat & Sn, int seed)
   
   for (unsigned int i = 0; i < p; i++)
   {
-    threads[i] = std::thread(&Portfolio::ploss, this, &l, Sn, seed + i, i, p);
+    threads[i] = std::thread(&Portfolio::ploss, this, &l, &Sn, i, p);
   }
   
   for (unsigned int i = 0; i < p; i++)
@@ -140,6 +146,7 @@ arma::vec Portfolio::loss(arma::mat & Sn, int seed)
   
   return l;
 }
+
 
 RCPP_EXPOSED_CLASS(Counterparty)
 
@@ -152,6 +159,7 @@ RCPP_MODULE(Counterparty) {
     .method( "getEAD", &Counterparty::getEAD)
     .method( "getWeights", &Counterparty::getWeights)
     .method( "getWI", &Counterparty::getWI)
+    .method( "getNPD", &Counterparty::getNPD)
     .method( "loss", &Counterparty::loss)
   ;
   Rcpp::class_<Portfolio>( "Portfolio" )
@@ -159,7 +167,6 @@ RCPP_MODULE(Counterparty) {
     .method( "getN", &Portfolio::getN)
     .method( "addCounterparty", &Portfolio::addCounterparty)
     .method( "getCounterparty", &Portfolio::getCounterparty)
-    .method( "mloss", &Portfolio::mloss)
     .method( "loss", &Portfolio::loss)
   ;
 }
