@@ -108,7 +108,7 @@ Counterparty Portfolio::getCounterparty(unsigned int i)
 
 double Portfolio::mloss(const arma::mat Vn)
 {
-  double loss(0), d;
+  double loss(0);
   for (auto &&i: this->counterparties)
   {
     loss += i.loss(Vn);
